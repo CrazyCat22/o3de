@@ -14,6 +14,7 @@
 #include <Atom/RPI.Public/Shader/ShaderResourceGroup.h>
 #include <Atom/RPI.Public/Shader/ShaderReloadDebugTracker.h>
 #include <Atom/RPI.Public/Shader/Shader.h>
+#include <Atom/RPI.Public/Shader/ShaderSystemInterface.h>
 #include <Atom/RPI.Reflect/Shader/ShaderOptionGroup.h>
 #include <Atom/RPI.Reflect/Material/MaterialAsset.h>
 #include <Atom/RPI.Reflect/Material/MaterialPropertiesLayout.h>
@@ -206,6 +207,22 @@ namespace AZ
             }
 
             return AZ::Success(appliedCount);
+        }
+
+        void Material::ApplyGlobalShaderOptions()
+        {
+            // [GFX TODO][ATOM-5625] This really needs to be optimized to put the burden on setting global shader options, not applying global shader options.
+            // For example, make the shader system collect a map of all shaders and ShaderVaraintIds, and look up the shader option names at set-time.
+            ShaderSystemInterface* shaderSystem = ShaderSystemInterface::Get();
+            for (auto iter : shaderSystem->GetGlobalShaderOptions())
+            {
+                const Name& shaderOptionName = iter.first;
+                ShaderOptionValue value = iter.second;
+                if (!SetSystemShaderOption(shaderOptionName, value).IsSuccess())
+                {
+                    AZ_Warning("Material", false, "Shader option '%s' is owned by this material. Global value for this option was ignored.", shaderOptionName.GetCStr());
+                }
+            }
         }
 
         void Material::SetPsoHandlingOverride(MaterialPropertyPsoHandling psoHandlingOverride)
@@ -600,13 +617,28 @@ namespace AZ
             }
             else
             {
+                AZ::Data::AssetInfo assetInfo;
+                AZ::Data::AssetCatalogRequestBus::BroadcastResult(assetInfo, &AZ::Data::AssetCatalogRequests::GetAssetInfoById, imageAsset.GetId());
+
+                auto assetType = imageAsset.GetType();
+
+                if (assetInfo.m_assetId.IsValid())
+                {
+                    if (assetType != imageAsset.GetType())
+                    {
+                        AZ_Assert(false, "Wrong asset type with input asset");
+                        // Correct the asset type
+                        assetType = assetInfo.m_assetType;
+                    }
+                }
+
                 Data::Instance<Image> image = nullptr;
-                if (imageAsset.GetType() == azrtti_typeid<StreamingImageAsset>())
+                if (assetType == azrtti_typeid<StreamingImageAsset>())
                 {
                     Data::Asset<StreamingImageAsset> streamingImageAsset = Data::static_pointer_cast<StreamingImageAsset>(imageAsset);
                     image = StreamingImage::FindOrCreate(streamingImageAsset);
                 }
-                else if (imageAsset.GetType() == azrtti_typeid<AttachmentImageAsset>())
+                else if (assetType == azrtti_typeid<AttachmentImageAsset>())
                 {
                     Data::Asset<AttachmentImageAsset> attachmentImageAsset = Data::static_pointer_cast<AttachmentImageAsset>(imageAsset);
                     image = AttachmentImage::FindOrCreate(attachmentImageAsset);

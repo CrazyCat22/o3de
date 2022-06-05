@@ -171,7 +171,12 @@ namespace AtomToolsFramework
             return false;
         }
 
-        if (!IsValidSourceDocumentPath(path))
+        if (!IsDocumentPathInSupportedFolder(path))
+        {
+            return false;
+        }
+
+        if (!IsDocumentPathEditable(path))
         {
             return false;
         }
@@ -179,7 +184,7 @@ namespace AtomToolsFramework
         return true;
     }
 
-    bool IsValidSourceDocumentPath(const AZStd::string& path)
+    bool IsDocumentPathInSupportedFolder(const AZStd::string& path)
     {
         bool assetFoldersRetrieved = false;
         AZStd::vector<AZStd::string> assetFolders;
@@ -197,6 +202,38 @@ namespace AtomToolsFramework
         }
 
         return false;
+    }
+
+    bool IsDocumentPathEditable(const AZStd::string& path)
+    {
+        for (const auto& [storedPath, flag] :
+             GetSettingsObject<AZStd::unordered_map<AZStd::string, bool>>("/O3DE/Atom/Tools/EditablePathSettings"))
+        {
+            if (auto resolveResult = AZ::IO::FileIOBase::GetInstance()->ResolvePath(AZ::IO::PathView{ storedPath }))
+            {
+                if (resolveResult->Compare(path) == 0)
+                {
+                    return flag;
+                }
+            }
+        }
+        return true;
+    }
+
+    bool IsDocumentPathPreviewable(const AZStd::string& path)
+    {
+        for (const auto& [storedPath, flag] :
+             GetSettingsObject<AZStd::unordered_map<AZStd::string, bool>>("/O3DE/Atom/Tools/PreviewablePathSettings"))
+        {
+            if (auto resolveResult = AZ::IO::FileIOBase::GetInstance()->ResolvePath(AZ::IO::PathView{ storedPath }))
+            {
+                if (resolveResult->Compare(path) == 0)
+                {
+                    return flag;
+                }
+            }
+        }
+        return true;
     }
 
     bool LaunchTool(const QString& baseName, const QStringList& arguments)
@@ -283,5 +320,17 @@ namespace AtomToolsFramework
 
         AZ_Warning("AtomToolsFramework", saved, R"(Unable to save registry file to path "%s"\n)", savePath.c_str());
         return saved;
+    }
+
+    AZStd::string ConvertAliasToPath(const AZStd::string& path)
+    {
+        auto convertedPath = AZ::IO::FileIOBase::GetInstance()->ResolvePath(AZ::IO::PathView{ path });
+        return convertedPath ? convertedPath->StringAsPosix() : path;
+    }
+
+    AZStd::string ConvertPathToAlias(const AZStd::string& path)
+    {
+        auto convertedPath = AZ::IO::FileIOBase::GetInstance()->ConvertToAlias(AZ::IO::PathView{ path });
+        return convertedPath ? convertedPath->StringAsPosix() : path;
     }
 } // namespace AtomToolsFramework
